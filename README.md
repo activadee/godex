@@ -93,6 +93,12 @@ turn, err := thread.Run(ctx, "Write a one sentence update.", &godex.TurnOptions{
 })
 ```
 
+## Examples
+
+- `examples/basic`: single-turn conversation (`go run ./examples/basic`)
+- `examples/streaming`: step-by-step event streaming demo (`go run ./examples/streaming`)
+- `examples/schema`: structured JSON output with schema validation (`go run ./examples/schema`)
+
 ## Thread persistence
 
 Threads expose their ID once the `thread.started` event arrives. Store it and recreate a thread later:
