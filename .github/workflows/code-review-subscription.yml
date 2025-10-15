@@ -1,0 +1,96 @@
+name: Codex Code Review
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+concurrency:
+  group: codex-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    name: Run automated review
+    if: github.event.pull_request.draft == false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Fetch base reference
+        run: git fetch --no-tags origin ${{ github.event.pull_request.base.ref }}
+
+      - name: Collect review inputs
+        uses: ./.github/actions/codex-collect
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write review instructions
+        run: cp .github/prompts/codex-review.md codex_prompt.md
+
+      - name: Load Codex output schema
+        run: echo "CODEX_OUTPUT_SCHEMA=$(jq -c . .github/prompts/codex-review-schema.json)" >> "$GITHUB_ENV"
+
+      - name: Run Codex review
+        id: run_codex
+        uses: activadee/codex-action@main
+        with:
+          codex-auth-json-b64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
+          safety-strategy: drop-sudo
+          prompt-file: codex_prompt.md
+          output-file: codex-output.json
+          output-schema: ${{ env.CODEX_OUTPUT_SCHEMA }}
+
+      - name: Normalize Codex review output
+        run: node .github/scripts/codex/normalize-review.cjs
+
+      - name: Submit review
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const submitReview = require('./.github/scripts/codex/submit-review.js');
+            await submitReview({ github, context, core });
+        env:
+          REVIEW_FILE: review-comments.json
+
+
+      - name: Upload review artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: codex-review-debug-${{ github.run_id }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            diff.txt
+            files.json
+            files.jsonl
+            existing_issue_comments.json
+            existing_issue_comments.jsonl
+            existing_reviews.json
+            existing_reviews.jsonl
+            existing_review_comments.json
+            existing_review_comments.jsonl
+            existing_review_threads.json
+            existing_review_threads.jsonl
+            review_metadata.json
+            codex_prompt.md
+            codex-output.json
+            review-comments.json
+            skipped-comments.json

@@ -1,0 +1,115 @@
+name: Manual Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Tag to create (e.g. v0.1.0)"
+        required: true
+      release_title:
+        description: "Display name (defaults to tag)"
+        required: false
+      target:
+        description: "Commit/branch to release"
+        default: "main"
+        required: true
+      draft:
+        description: "Create as a draft release"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.target }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Determine previous tag
+        id: prev_tag
+        run: |
+          git fetch --tags --quiet
+          LAST_TAG=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || echo "")
+          echo "value=$LAST_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build Codex prompt
+        id: prompt
+        run: |
+          TAG_NAME="${{ inputs.tag_name }}"
+          LAST_TAG="${{ steps.prev_tag.outputs.value }}"
+          if [ -z "$LAST_TAG" ]; then
+            RANGE_DESC="project start"
+            COMMITS=$(git log --pretty=format:'- %s (%h)' --no-merges)
+          else
+            RANGE_DESC="${LAST_TAG}..${GITHUB_SHA}"
+            COMMITS=$(git log --pretty=format:'- %s (%h)' --no-merges "${LAST_TAG}..${GITHUB_SHA}")
+          fi
+
+          if [ -z "$COMMITS" ]; then
+            COMMITS="- No new commits detected."
+          fi
+
+          TEMPLATE=$(cat .github/prompts/codex-release-template.md)
+
+          cat <<EOF > codex_prompt.md
+          ${TEMPLATE}
+
+          Release tag: ${TAG_NAME}
+          Commit range: ${RANGE_DESC}
+
+          Commits:
+          ${COMMITS}
+          EOF
+
+      - name: Load release schema
+        run: echo "CODEX_OUTPUT_SCHEMA=$(jq -c . .github/prompts/codex-release-schema.json)" >> "$GITHUB_ENV"
+
+      - name: Generate release highlights with Codex
+        uses: activadee/codex-action@main
+        with:
+          codex-auth-json-b64: ${{ secrets.CODEX_AUTH_JSON_B64 }}
+          prompt-file: codex_prompt.md
+          output-file: codex-release.json
+          output-schema: ${{ env.CODEX_OUTPUT_SCHEMA }}
+          safety-strategy: drop-sudo
+
+      - name: Render release notes
+        id: render
+        run: |
+          SUMMARY=$(jq -r '.overview // empty' codex-release.json)
+          {
+            if [ -n "$SUMMARY" ]; then
+              echo "$SUMMARY"
+              echo
+            fi
+            jq -r '.highlights[] | "- " + .' codex-release.json
+          } > release-notes.md
+          {
+            echo "notes<<EOF"
+            cat release-notes.md
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ inputs.tag_name }}
+          target_commitish: ${{ inputs.target }}
+          name: ${{ inputs.release_title || inputs.tag_name }}
+          draft: ${{ inputs.draft }}
+          body_path: release-notes.md
