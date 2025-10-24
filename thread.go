@@ -8,6 +8,10 @@ import (
 	"github.com/activadee/godex/internal/codexexec"
 )
 
+type execRunner interface {
+	Run(context.Context, codexexec.Args, func([]byte) error) error
+}
+
 // Turn represents a fully completed turn from the Codex agent.
 type Turn struct {
 	Items         []ThreadItem
@@ -52,7 +56,7 @@ func (r RunStreamedResult) Close() error {
 // Thread encapsulates a conversation with the Codex agent. It is safe to reuse a Thread
 // across sequential turns, but concurrent Run/RunStreamed calls on the same Thread are not supported.
 type Thread struct {
-	exec          *codexexec.Runner
+	exec          execRunner
 	options       CodexOptions
 	threadOptions ThreadOptions
 
@@ -60,7 +64,7 @@ type Thread struct {
 	id string
 }
 
-func newThread(exec *codexexec.Runner, options CodexOptions, threadOptions ThreadOptions, id string) *Thread {
+func newThread(exec execRunner, options CodexOptions, threadOptions ThreadOptions, id string) *Thread {
 	return &Thread{
 		exec:          exec,
 		options:       options,
@@ -79,6 +83,16 @@ func (t *Thread) ID() string {
 
 // RunStreamed submits the provided input to the agent and streams events as they occur.
 func (t *Thread) RunStreamed(ctx context.Context, input string, turnOptions *TurnOptions) (RunStreamedResult, error) {
+	return t.runStreamed(ctx, input, nil, turnOptions)
+}
+
+// RunStreamedInputs behaves like RunStreamed but accepts structured input segments,
+// allowing callers to mix multiple text fragments and local image paths.
+func (t *Thread) RunStreamedInputs(ctx context.Context, segments []InputSegment, turnOptions *TurnOptions) (RunStreamedResult, error) {
+	return t.runStreamed(ctx, "", segments, turnOptions)
+}
+
+func (t *Thread) runStreamed(ctx context.Context, baseInput string, segments []InputSegment, turnOptions *TurnOptions) (RunStreamedResult, error) {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -86,6 +100,11 @@ func (t *Thread) RunStreamed(ctx context.Context, input string, turnOptions *Tur
 	var turnOpts TurnOptions
 	if turnOptions != nil {
 		turnOpts = *turnOptions
+	}
+
+	prepared, err := normalizeInput(baseInput, segments)
+	if err != nil {
+		return RunStreamedResult{}, err
 	}
 
 	schemaPath, cleanup, err := createOutputSchemaFile(turnOpts.OutputSchema)
@@ -104,7 +123,7 @@ func (t *Thread) RunStreamed(ctx context.Context, input string, turnOptions *Tur
 		defer stream.finish()
 		defer cleanup()
 		args := codexexec.Args{
-			Input:            input,
+			Input:            prepared.prompt,
 			BaseURL:          t.options.BaseURL,
 			APIKey:           t.options.APIKey,
 			ThreadID:         currentThreadID,
@@ -113,6 +132,7 @@ func (t *Thread) RunStreamed(ctx context.Context, input string, turnOptions *Tur
 			WorkingDirectory: t.threadOptions.WorkingDirectory,
 			SkipGitRepoCheck: t.threadOptions.SkipGitRepoCheck,
 			OutputSchemaPath: schemaPath,
+			Images:           prepared.images,
 		}
 
 		err := t.exec.Run(ctx, args, func(line []byte) error {
@@ -141,7 +161,16 @@ func (t *Thread) RunStreamed(ctx context.Context, input string, turnOptions *Tur
 
 // Run submits the input to the agent and waits for the turn to finish, returning the final response.
 func (t *Thread) Run(ctx context.Context, input string, turnOptions *TurnOptions) (RunResult, error) {
-	result, err := t.RunStreamed(ctx, input, turnOptions)
+	return t.run(ctx, input, nil, turnOptions)
+}
+
+// RunInputs mirrors Run but accepts structured input segments.
+func (t *Thread) RunInputs(ctx context.Context, segments []InputSegment, turnOptions *TurnOptions) (RunResult, error) {
+	return t.run(ctx, "", segments, turnOptions)
+}
+
+func (t *Thread) run(ctx context.Context, baseInput string, segments []InputSegment, turnOptions *TurnOptions) (RunResult, error) {
+	result, err := t.runStreamed(ctx, baseInput, segments, turnOptions)
 	if err != nil {
 		return RunResult{}, err
 	}
