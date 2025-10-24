@@ -93,6 +93,27 @@ turn, err := thread.Run(ctx, "Write a one sentence update.", &godex.TurnOptions{
 })
 ```
 
+## Multi-part input and local images
+
+Mix text segments and local image paths by using `RunInputs` / `RunStreamedInputs` with
+`InputSegment` helpers. Text segments are joined with blank lines and each image path is
+forwarded to the CLI via `--image`:
+
+```go
+segments := []godex.InputSegment{
+ godex.TextSegment("Describe the image differences"),
+ godex.LocalImageSegment("/tmp/baseline.png"),
+ godex.LocalImageSegment("/tmp/current.png"),
+}
+
+turn, err := thread.RunInputs(ctx, segments, nil)
+if err != nil {
+ log.Fatal(err)
+}
+
+fmt.Println("Assistant:", turn.FinalResponse)
+```
+
 ## Examples
 
 - `examples/basic`: single-turn conversation (`go run ./examples/basic`)
