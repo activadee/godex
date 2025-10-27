@@ -4,7 +4,7 @@ import "github.com/activadee/godex/internal/codexexec"
 
 // Codex is the entrypoint for interacting with the Codex agent via the CLI.
 type Codex struct {
-	exec    *codexexec.Runner
+	exec    execRunner
 	options CodexOptions
 }
 

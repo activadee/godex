@@ -27,6 +27,7 @@ type Args struct {
 	WorkingDirectory string
 	SkipGitRepoCheck bool
 	OutputSchemaPath string
+	Images           []string
 }
 
 // Runner wraps execution of the Codex CLI.
@@ -68,6 +69,11 @@ func (r *Runner) Run(ctx context.Context, args Args, handleLine func([]byte) err
 	}
 	if args.OutputSchemaPath != "" {
 		commandArgs = append(commandArgs, "--output-schema", args.OutputSchemaPath)
+	}
+	for _, image := range args.Images {
+		if image != "" {
+			commandArgs = append(commandArgs, "--image", image)
+		}
 	}
 	if args.ThreadID != "" {
 		commandArgs = append(commandArgs, "resume", args.ThreadID)
