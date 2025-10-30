@@ -12,6 +12,21 @@ type ThreadError struct {
 	Message string `json:"message"`
 }
 
+// ThreadStreamError wraps a thread-level error emitted by the Codex CLI. It is returned
+// when Run/RunInputs encounter a `thread.error` event or when RunStreamedResult.Wait is
+// invoked after such an event.
+type ThreadStreamError struct {
+	ThreadError
+}
+
+// Error implements the error interface.
+func (e *ThreadStreamError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.Message
+}
+
 // ThreadEventType enumerates the JSON event types streamed by the Codex CLI.
 type ThreadEventType string
 
