@@ -188,9 +188,15 @@ func indexByte(s string, b byte) int {
 }
 
 func findCodexPath() (string, error) {
-	path, err := exec.LookPath("codex")
-	if err != nil {
-		return "", fmt.Errorf("codex binary not found in PATH: %w", err)
+	bundledPath, bundleErr := ensureBundledBinary()
+	if bundleErr == nil {
+		return bundledPath, nil
 	}
-	return path, nil
+
+	path, err := exec.LookPath("codex")
+	if err == nil {
+		return path, nil
+	}
+
+	return "", fmt.Errorf("unable to discover codex binary: bundle error: %v; PATH lookup error: %w", bundleErr, err)
 }
