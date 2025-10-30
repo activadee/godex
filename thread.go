@@ -191,7 +191,6 @@ func (t *Thread) run(ctx context.Context, baseInput string, segments []InputSegm
 		turnFailure  *ThreadError
 	)
 
-loop:
 	for event := range result.Events() {
 		switch e := event.(type) {
 		case ItemCompletedEvent:
@@ -205,7 +204,7 @@ loop:
 		case TurnFailedEvent:
 			turnFailure = &e.Error
 		case ThreadErrorEvent:
-			break loop
+			return RunResult{}, &ThreadStreamError{ThreadError: ThreadError{Message: e.Message}}
 		}
 
 		if turnFailure != nil {
