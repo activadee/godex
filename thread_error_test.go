@@ -2,13 +2,12 @@ package godex
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"testing"
 )
 
 func TestThreadRunReturnsThreadStreamError(t *testing.T) {
-	runner := &fakeRunner{t: t, events: threadErrorEvents(t)}
+	runner := &fakeRunner{t: t, batches: []fakeRun{{events: threadErrorEvents(t)}}}
 	thread := newThread(runner, CodexOptions{}, ThreadOptions{}, "")
 
 	_, err := thread.Run(context.Background(), "trigger error", nil)
@@ -25,24 +24,8 @@ func TestThreadRunReturnsThreadStreamError(t *testing.T) {
 	}
 }
 
-func threadErrorEvents(t *testing.T) [][]byte {
-	events := []map[string]any{
-		{"type": "thread.started", "thread_id": "thread_1"},
-		{"type": "error", "message": "boom"},
-	}
-	var encoded [][]byte
-	for _, event := range events {
-		data, err := json.Marshal(event)
-		if err != nil {
-			t.Fatalf("marshal event: %v", err)
-		}
-		encoded = append(encoded, data)
-	}
-	return encoded
-}
-
 func TestRunStreamedResultWaitReturnsThreadStreamError(t *testing.T) {
-	runner := &fakeRunner{t: t, events: threadErrorEvents(t)}
+	runner := &fakeRunner{t: t, batches: []fakeRun{{events: threadErrorEvents(t)}}}
 	thread := newThread(runner, CodexOptions{}, ThreadOptions{}, "")
 
 	result, err := thread.RunStreamed(context.Background(), "trigger error", nil)
