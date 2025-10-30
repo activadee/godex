@@ -8,7 +8,7 @@
 go get github.com/activadee/godex
 ```
 
-The SDK expects the Codex CLI binary to be installed and discoverable on your `PATH` (e.g. `which codex`). If you keep the CLI in a custom location, provide the absolute path via `CodexOptions.CodexPathOverride`. Authentication is handled entirely by the CLI; reuse whichever credentials you already configured (environment variables, `codex auth login`, etc.) or set `CodexOptions.APIKey` to override the API key programmatically:
+`godex` automatically downloads the Codex CLI into your user cache the first time it is needed. The cached build is keyed by platform and release tag so upgrades are seamless. Advanced users can override the cache directory or release tag via the `GODEX_CLI_CACHE` and `GODEX_CLI_RELEASE_TAG` environment variables. If you prefer to use a self-managed binary, set `CodexOptions.CodexPathOverride` or ensure the CLI is already available on your `PATH` (e.g. `which codex`). Authentication is handled entirely by the CLI; reuse whichever credentials you already configured (environment variables, `codex auth login`, etc.) or set `CodexOptions.APIKey` to override the API key programmatically:
 
 ```bash
 export CODEX_API_KEY=sk-...
