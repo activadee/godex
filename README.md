@@ -156,7 +156,7 @@ Because the CLI is not bundled with the repository, integration tests that spawn
 `Thread.Run` and `Thread.RunStreamed` surface failures in a few ways:
 
 - Turn-level errors (`turn.failed` events) return a Go `error` whose message mirrors the CLI output.
-- Stream-level errors (`error` events) abort the stream with the reported message.
+- Stream-level errors (`error` events) abort the stream with a `*godex.ThreadStreamError`, exposing the reported message and allowing `errors.As` checks.
 - Process failures (non-zero CLI exit) propagate the exit code and stderr via `Runner.Run`.
 
 Always check the returned error when the agent turn completes.

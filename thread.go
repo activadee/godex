@@ -122,6 +122,7 @@ func (t *Thread) runStreamed(ctx context.Context, baseInput string, segments []I
 		defer close(events)
 		defer stream.finish()
 		defer cleanup()
+		var threadErr error
 		args := codexexec.Args{
 			Input:            prepared.prompt,
 			BaseURL:          t.options.BaseURL,
@@ -144,6 +145,9 @@ func (t *Thread) runStreamed(ctx context.Context, baseInput string, segments []I
 			if started, ok := event.(ThreadStartedEvent); ok {
 				t.setID(started.ThreadID)
 			}
+			if errEvent, ok := event.(ThreadErrorEvent); ok {
+				threadErr = &ThreadStreamError{ThreadError: ThreadError{Message: errEvent.Message}}
+			}
 
 			select {
 			case events <- event:
@@ -153,7 +157,11 @@ func (t *Thread) runStreamed(ctx context.Context, baseInput string, segments []I
 			}
 		})
 
-		stream.setErr(err)
+		if threadErr != nil {
+			stream.setErr(threadErr)
+		} else {
+			stream.setErr(err)
+		}
 	}()
 
 	return RunStreamedResult{stream: stream}, nil
@@ -196,7 +204,7 @@ func (t *Thread) run(ctx context.Context, baseInput string, segments []InputSegm
 		case TurnFailedEvent:
 			turnFailure = &e.Error
 		case ThreadErrorEvent:
-			return RunResult{}, fmt.Errorf("thread error: %s", e.Message)
+			return RunResult{}, &ThreadStreamError{ThreadError: ThreadError{Message: e.Message}}
 		}
 
 		if turnFailure != nil {
