@@ -162,10 +162,6 @@ func (t *Thread) runStreamed(ctx context.Context, baseInput string, segments []I
 		} else {
 			stream.setErr(err)
 		}
-			stream.setErr(threadErr)
-		} else {
-			stream.setErr(err)
-		}
 	}()
 
 	return RunStreamedResult{stream: stream}, nil
