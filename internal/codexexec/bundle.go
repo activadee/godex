@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"time"
 )
 
 type archiveKind int
@@ -153,7 +154,8 @@ func bundleCacheDir() (string, error) {
 func downloadBinaryFromRelease(info targetInfo, release, destPath string) error {
 	url := fmt.Sprintf("https://github.com/openai/codex/releases/download/%s/%s", release, info.assetName)
 
-	resp, err := http.Get(url)
+	client := &http.Client{Timeout: 2 * time.Minute}  
+	resp, err := client.Get(url) 
 	if err != nil {
 		return fmt.Errorf("download codex binary: %w", err)
 	}
