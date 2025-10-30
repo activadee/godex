@@ -227,11 +227,17 @@ func extractZipBinary(data []byte, info targetInfo, destPath string) error {
 }
 
 func writeBinary(r io.Reader, destPath string) error {
-	tmpPath := destPath + ".tmp"
-	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0o700)
+	tmpFile, err := os.CreateTemp(filepath.Dir(destPath), filepath.Base(destPath)+".tmp-*")
 	if err != nil {
 		return fmt.Errorf("create temp binary: %w", err)
 	}
+	if err := tmpFile.Chmod(0o700); err != nil {
+		tmpFile.Close()
+		_ = os.Remove(tmpFile.Name())
+		return fmt.Errorf("chmod temp binary: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	f := tmpFile
 	defer func() {
 		_ = f.Close()
 		_ = os.Remove(tmpPath)
