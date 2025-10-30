@@ -22,7 +22,7 @@ const (
 	archiveZip
 )
 
-const defaultCodexReleaseTag = "rust-v0.50.0"
+const defaultCodexReleaseTag = "rust-v0.52.0"
 
 var downloadBinaryFunc = downloadBinaryFromRelease
 var runtimeGOOS = runtime.GOOS

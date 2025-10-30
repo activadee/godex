@@ -119,6 +119,7 @@ fmt.Println("Assistant:", turn.FinalResponse)
 - `examples/basic`: single-turn conversation (`go run ./examples/basic`)
 - `examples/streaming`: step-by-step event streaming demo (`go run ./examples/streaming`)
 - `examples/schema`: structured JSON output with schema validation (`go run ./examples/schema`)
+- `examples/images`: multi-part prompt mixing text and a local image (`go run ./examples/images`)
 
 ## Thread persistence
 
