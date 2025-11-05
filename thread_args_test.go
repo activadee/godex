@@ -39,6 +39,30 @@ func TestThreadRunForwardsThreadOptions(t *testing.T) {
 	}
 }
 
+func TestThreadRunForwardsConfigOverrides(t *testing.T) {
+	runner := &fakeRunner{t: t, batches: []fakeRun{{events: successEvents(t)}}}
+	overrides := map[string]any{
+		"profile": "staging",
+		"beta":    true,
+	}
+	thread := newThread(runner, CodexOptions{ConfigOverrides: overrides}, ThreadOptions{}, "")
+
+	if _, err := thread.Run(context.Background(), "hello", nil); err != nil {
+		t.Fatalf("Run returned error: %v", err)
+	}
+
+	call := runner.lastCall()
+	if call.ConfigOverrides == nil {
+		t.Fatalf("expected ConfigOverrides to be forwarded")
+	}
+	if got := call.ConfigOverrides["profile"]; got != "staging" {
+		t.Fatalf("expected profile override to be staging, got %v", got)
+	}
+	if got, ok := call.ConfigOverrides["beta"].(bool); !ok || !got {
+		t.Fatalf("expected beta override to be true, got %v", call.ConfigOverrides["beta"])
+	}
+}
+
 func TestThreadRunReusesThreadIDForSubsequentCalls(t *testing.T) {
 	batches := []fakeRun{
 		{events: successEvents(t)},

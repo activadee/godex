@@ -134,6 +134,7 @@ func (t *Thread) runStreamed(ctx context.Context, baseInput string, segments []I
 			SkipGitRepoCheck: t.threadOptions.SkipGitRepoCheck,
 			OutputSchemaPath: schemaPath,
 			Images:           prepared.images,
+			ConfigOverrides:  t.options.ConfigOverrides,
 		}
 
 		err := t.exec.Run(ctx, args, func(line []byte) error {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"sort"
 	"sync"
 )
 
@@ -28,6 +29,7 @@ type Args struct {
 	SkipGitRepoCheck bool
 	OutputSchemaPath string
 	Images           []string
+	ConfigOverrides  map[string]any
 }
 
 // Runner wraps execution of the Codex CLI.
@@ -53,31 +55,7 @@ func New(override string) (*Runner, error) {
 
 // Run executes `codex exec --experimental-json` and streams each JSONL line through handleLine.
 func (r *Runner) Run(ctx context.Context, args Args, handleLine func([]byte) error) error {
-	commandArgs := []string{"exec", "--experimental-json"}
-
-	if args.Model != "" {
-		commandArgs = append(commandArgs, "--model", args.Model)
-	}
-	if args.SandboxMode != "" {
-		commandArgs = append(commandArgs, "--sandbox", args.SandboxMode)
-	}
-	if args.WorkingDirectory != "" {
-		commandArgs = append(commandArgs, "--cd", args.WorkingDirectory)
-	}
-	if args.SkipGitRepoCheck {
-		commandArgs = append(commandArgs, "--skip-git-repo-check")
-	}
-	if args.OutputSchemaPath != "" {
-		commandArgs = append(commandArgs, "--output-schema", args.OutputSchemaPath)
-	}
-	for _, image := range args.Images {
-		if image != "" {
-			commandArgs = append(commandArgs, "--image", image)
-		}
-	}
-	if args.ThreadID != "" {
-		commandArgs = append(commandArgs, "resume", args.ThreadID)
-	}
+	commandArgs := buildCommandArgs(args)
 
 	cmd := exec.CommandContext(ctx, r.executablePath, commandArgs...)
 	cmd.Env = buildEnv(args.BaseURL, args.APIKey)
@@ -152,6 +130,54 @@ func (r *Runner) Run(ctx context.Context, args Args, handleLine func([]byte) err
 	}
 
 	return nil
+}
+
+func buildCommandArgs(args Args) []string {
+	commandArgs := []string{"exec", "--experimental-json"}
+
+	if args.ConfigOverrides != nil {
+		if value, ok := args.ConfigOverrides["profile"]; ok {
+			commandArgs = append(commandArgs, "--profile", fmt.Sprint(value))
+		}
+
+		keys := make([]string, 0, len(args.ConfigOverrides))
+		for key := range args.ConfigOverrides {
+			if key == "profile" {
+				continue
+			}
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			value := args.ConfigOverrides[key]
+			commandArgs = append(commandArgs, "-c", key+"="+fmt.Sprint(value))
+		}
+	}
+
+	if args.Model != "" {
+		commandArgs = append(commandArgs, "--model", args.Model)
+	}
+	if args.SandboxMode != "" {
+		commandArgs = append(commandArgs, "--sandbox", args.SandboxMode)
+	}
+	if args.WorkingDirectory != "" {
+		commandArgs = append(commandArgs, "--cd", args.WorkingDirectory)
+	}
+	if args.SkipGitRepoCheck {
+		commandArgs = append(commandArgs, "--skip-git-repo-check")
+	}
+	if args.OutputSchemaPath != "" {
+		commandArgs = append(commandArgs, "--output-schema", args.OutputSchemaPath)
+	}
+	for _, image := range args.Images {
+		if image != "" {
+			commandArgs = append(commandArgs, "--image", image)
+		}
+	}
+	if args.ThreadID != "" {
+		commandArgs = append(commandArgs, "resume", args.ThreadID)
+	}
+	return commandArgs
 }
 
 func buildEnv(baseURL, apiKey string) []string {
