@@ -31,6 +31,9 @@ type CodexOptions struct {
 	// APIKey optionally overrides authentication for the Codex CLI. When empty, the CLI
 	// falls back to its own configured credentials (e.g. environment variables or auth login).
 	APIKey string
+	// ConfigOverrides forwards CLI configuration overrides as `-c key=value` pairs. When
+	// the `profile` key is present it is emitted as `--profile <value>` instead.
+	ConfigOverrides map[string]any
 }
 
 // ThreadOptions configure how the CLI executes a particular thread.

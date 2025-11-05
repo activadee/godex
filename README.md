@@ -142,6 +142,22 @@ thread := c.StartThread(godex.ThreadOptions{
 })
 ```
 
+## Selecting a profile programmatically
+
+Set CLI configuration overrides on `CodexOptions.ConfigOverrides`. Any key named `profile` is forwarded as `--profile`, while the rest become `-c key=value` pairs:
+
+```go
+client, err := godex.New(godex.CodexOptions{
+ ConfigOverrides: map[string]any{
+  "profile":        "production",
+  "feature.toggle": true,
+ },
+})
+if err != nil {
+ log.Fatal(err)
+}
+```
+
 ## Development
 
 Run the tests locally:
