@@ -86,6 +86,7 @@ type RunStreamedJSONResult[T any] struct {
 	events  <-chan ThreadEvent
 	updates <-chan RunStreamedJSONUpdate[T]
 	err     *sharedError
+	done    <-chan struct{}
 }
 
 // Events returns the stream of raw thread events produced by the turn.
@@ -100,24 +101,62 @@ func (r RunStreamedJSONResult[T]) Updates() <-chan RunStreamedJSONUpdate[T] {
 
 // Wait blocks until the turn finishes and returns the terminal error, if any.
 func (r RunStreamedJSONResult[T]) Wait() error {
+	var done <-chan struct{}
+	if r.done != nil {
+		done = r.done
+	}
 	if r.stream == nil {
+		if done != nil {
+			<-done
+		}
+		if r.err != nil {
+			return r.err.get()
+		}
 		return nil
 	}
 	if err := r.stream.Wait(); err != nil {
+		if done != nil {
+			<-done
+		}
 		return err
 	}
-	return r.err.get()
+	if done != nil {
+		<-done
+	}
+	if r.err != nil {
+		return r.err.get()
+	}
+	return nil
 }
 
 // Close cancels the turn and waits for shutdown.
 func (r RunStreamedJSONResult[T]) Close() error {
+	var done <-chan struct{}
+	if r.done != nil {
+		done = r.done
+	}
 	if r.stream == nil {
+		if done != nil {
+			<-done
+		}
+		if r.err != nil {
+			return r.err.get()
+		}
 		return nil
 	}
 	if err := r.stream.Close(); err != nil {
+		if done != nil {
+			<-done
+		}
 		return err
 	}
-	return r.err.get()
+	if done != nil {
+		<-done
+	}
+	if r.err != nil {
+		return r.err.get()
+	}
+	return nil
 }
 
 // RunStreamedJSON executes a turn expecting structured JSON output and streams raw events
@@ -140,15 +179,18 @@ func RunStreamedJSON[T any](ctx context.Context, thread *Thread, input string, o
 	events := make(chan ThreadEvent, runStreamedJSONEventBuffer)
 	updates := make(chan RunStreamedJSONUpdate[T], runStreamedJSONEventBuffer)
 	shErr := &sharedError{}
+	fanoutDone := make(chan struct{})
 
 	result := RunStreamedJSONResult[T]{
 		stream:  raw.stream,
 		events:  events,
 		updates: updates,
 		err:     shErr,
+		done:    fanoutDone,
 	}
 
 	go func() {
+		defer close(fanoutDone)
 		defer close(events)
 		defer close(updates)
 

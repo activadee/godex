@@ -153,3 +153,24 @@ func TestRunStreamedJSONSchemaViolation(t *testing.T) {
 		t.Fatal("expected schema error message to be populated")
 	}
 }
+
+func TestRunStreamedJSONWaitWithoutUpdatesConsumer(t *testing.T) {
+	events := marshalEvents(t, []map[string]any{
+		{"type": "thread.started", "thread_id": "thread_1"},
+		{"type": "turn.completed", "usage": map[string]any{"input_tokens": 1, "cached_input_tokens": 0, "output_tokens": 1}},
+	})
+
+	runner := &fakeRunner{t: t, batches: []fakeRun{{events: events}}}
+	thread := newThread(runner, CodexOptions{}, ThreadOptions{}, "")
+
+	result, err := RunStreamedJSON[structuredUpdate](context.Background(), thread, "structured", nil)
+	if err != nil {
+		t.Fatalf("RunStreamedJSON returned error: %v", err)
+	}
+	defer result.Close()
+
+	waitErr := result.Wait()
+	if !errors.Is(waitErr, ErrNoStructuredOutput) {
+		t.Fatalf("expected ErrNoStructuredOutput, got %v", waitErr)
+	}
+}
