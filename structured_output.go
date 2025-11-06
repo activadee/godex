@@ -240,8 +240,6 @@ func RunStreamedJSON[T any](ctx context.Context, thread *Thread, input string, o
 
 			select {
 			case events <- event:
-			case <-raw.stream.done:
-				return
 			default:
 				// Drop events when no consumer is attached to avoid blocking snapshot updates.
 			}
