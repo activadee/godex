@@ -53,4 +53,6 @@ type TurnOptions struct {
 	// OutputSchema is an optional JSON schema describing the structured response to
 	// collect from the agent. Must serialize to a JSON object (not an array or primitive).
 	OutputSchema any
+	// Callbacks attaches optional streaming callbacks invoked as events arrive.
+	Callbacks *StreamCallbacks
 }
