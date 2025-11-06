@@ -107,8 +107,9 @@ func (t *Thread) runStreamed(ctx context.Context, baseInput string, segments []I
 		return RunStreamedResult{}, err
 	}
 
-	schemaPath, cleanup, err := createOutputSchemaFile(turnOpts.OutputSchema)
+	schemaPath, schemaCleanup, err := createOutputSchemaFile(turnOpts.OutputSchema)
 	if err != nil {
+		prepared.cleanup()
 		return RunStreamedResult{}, err
 	}
 
@@ -121,7 +122,8 @@ func (t *Thread) runStreamed(ctx context.Context, baseInput string, segments []I
 	go func() {
 		defer close(events)
 		defer stream.finish()
-		defer cleanup()
+		defer schemaCleanup()
+		defer prepared.cleanup()
 		var threadErr error
 		args := codexexec.Args{
 			Input:            prepared.prompt,
