@@ -138,7 +138,7 @@ func RunStreamedJSON[T any](ctx context.Context, thread *Thread, input string, o
 	}
 
 	events := make(chan ThreadEvent, runStreamedJSONEventBuffer)
-	updates := make(chan RunStreamedJSONUpdate[T])
+	updates := make(chan RunStreamedJSONUpdate[T], runStreamedJSONEventBuffer)
 	shErr := &sharedError{}
 
 	result := RunStreamedJSONResult[T]{
@@ -164,6 +164,8 @@ func RunStreamedJSON[T any](ctx context.Context, thread *Thread, input string, o
 						case updates <- update:
 						case <-raw.stream.done:
 							return
+						default:
+							// Drop intermediate snapshot when the consumer ignores updates.
 						}
 					}
 				}
@@ -178,6 +180,8 @@ func RunStreamedJSON[T any](ctx context.Context, thread *Thread, input string, o
 						case updates <- update:
 						case <-raw.stream.done:
 							return
+						default:
+							// Drop final snapshot when the consumer ignores updates.
 						}
 					}
 				}
