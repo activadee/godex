@@ -190,7 +190,12 @@ func RunStreamedJSON[T any](ctx context.Context, thread *Thread, input string, o
 				}
 			}
 
-			select {
+		select {
+		case events <- event:
+		case <-raw.stream.done:
+			return
+		default:
+		}
 			case events <- event:
 			case <-raw.stream.done:
 				return
