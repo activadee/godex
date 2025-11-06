@@ -1,0 +1,14 @@
+name: Auto Label Issues
+
+on:
+  issues:
+    types:
+      - opened
+      - edited
+
+jobs:
+  auto-label:
+    uses: activadee/codex-shared-workflows/.github/workflows/auto-label.yml@main
+    secrets: inherit
+    with:
+      max_labels: 3
