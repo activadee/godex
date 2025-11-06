@@ -36,9 +36,19 @@ func main() {
 	}
 	defer streamed.Close()
 
+	eventDone := make(chan struct{})
+	go func() {
+		for range streamed.Events() {
+			// drain events so the producer keeps flowing
+		}
+		close(eventDone)
+	}()
+
 	for update := range streamed.Updates() {
 		fmt.Printf("[structured update] final=%t headline=%q next_step=%q\n", update.Final, update.Value.Headline, update.Value.NextStep)
 	}
+
+	<-eventDone
 
 	if err := streamed.Wait(); err != nil {
 		log.Fatalf("streamed structured turn failed: %v", err)
