@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -118,15 +119,34 @@ func (r *Runner) Run(ctx context.Context, args Args, handleLine func([]byte) err
 	waitErr := cmd.Wait()
 	stderrWG.Wait()
 
+	ctxErr := ctx.Err()
+
 	if readErr != nil {
-		return fmt.Errorf("reading codex output: %w", readErr)
+		switch {
+		case ctxErr != nil && errors.Is(readErr, ctxErr):
+			return ctxErr
+		case errors.Is(readErr, context.Canceled), errors.Is(readErr, context.DeadlineExceeded):
+			if ctxErr != nil {
+				return ctxErr
+			}
+			return readErr
+		default:
+			return fmt.Errorf("reading codex output: %w", readErr)
+		}
 	}
 
 	if waitErr != nil {
+		if ctxErr != nil {
+			return ctxErr
+		}
 		if exitErr, ok := waitErr.(*exec.ExitError); ok {
 			return fmt.Errorf("codex exec failed with code %d: %s", exitErr.ExitCode(), stderrBuf.String())
 		}
 		return fmt.Errorf("codex exec failed: %w", waitErr)
+	}
+
+	if ctxErr != nil {
+		return ctxErr
 	}
 
 	return nil
