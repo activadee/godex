@@ -111,7 +111,7 @@ if err != nil {
 log.Printf("update: %+v", result)
 ```
 
-## Multi-part input and local images
+## Multi-part input and images
 
 Mix text segments and local image paths by using `RunInputs` / `RunStreamedInputs` with
 `InputSegment` helpers. Text segments are joined with blank lines and each image path is
@@ -131,6 +131,33 @@ if err != nil {
 
 fmt.Println("Assistant:", turn.FinalResponse)
 ```
+
+For remote assets or in-memory data, reach for the convenience constructors:
+
+```go
+segment, err := godex.URLImageSegment(ctx, "https://example.com/image.png")
+if err != nil {
+ log.Fatal(err)
+}
+
+rawBytes := loadThumbnailBytes() // your own code that returns []byte
+
+bytesSegment, err := godex.BytesImageSegment("thumbnail", rawBytes)
+if err != nil {
+ log.Fatal(err)
+}
+
+turn, err := thread.RunInputs(ctx, []godex.InputSegment{
+ godex.TextSegment("Describe both images."),
+ segment,
+ bytesSegment,
+}, nil)
+```
+
+`URLImageSegment` downloads the image to a temp file, verifies that the server returned an
+`image/*` content type, and schedules the file for cleanup once the run completes. Use
+`BytesImageSegment` when you already have the image bytes; it writes them to a temporary file
+with a suitable extension and cleans the file up automatically.
 
 ## Examples
 
