@@ -102,6 +102,8 @@ func (t *Thread) runStreamed(ctx context.Context, baseInput string, segments []I
 		turnOpts = *turnOptions
 	}
 
+	callbacks := turnOpts.Callbacks
+
 	prepared, err := normalizeInput(baseInput, segments)
 	if err != nil {
 		return RunStreamedResult{}, err
@@ -150,6 +152,10 @@ func (t *Thread) runStreamed(ctx context.Context, baseInput string, segments []I
 			}
 			if errEvent, ok := event.(ThreadErrorEvent); ok {
 				threadErr = &ThreadStreamError{ThreadError: ThreadError{Message: errEvent.Message}}
+			}
+
+			if callbacks != nil {
+				callbacks.handle(event)
 			}
 
 			select {
