@@ -98,19 +98,10 @@ func TestRunStreamedJSONEmitsUpdates(t *testing.T) {
 	}
 	defer result.Close()
 
-	eventDone := make(chan struct{})
-	go func() {
-		for range result.Events() {
-		}
-		close(eventDone)
-	}()
-
 	var updates []RunStreamedJSONUpdate[structuredUpdate]
 	for update := range result.Updates() {
 		updates = append(updates, update)
 	}
-
-	<-eventDone
 
 	if err := result.Wait(); err != nil {
 		t.Fatalf("result.Wait returned error: %v", err)
@@ -145,18 +136,9 @@ func TestRunStreamedJSONSchemaViolation(t *testing.T) {
 	}
 	defer result.Close()
 
-	eventDone := make(chan struct{})
-	go func() {
-		for range result.Events() {
-		}
-		close(eventDone)
-	}()
-
 	for range result.Updates() {
 		// drain updates
 	}
-
-	<-eventDone
 
 	waitErr := result.Wait()
 	if waitErr == nil {

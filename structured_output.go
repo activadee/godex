@@ -18,6 +18,8 @@ var (
 	ErrNoStructuredOutput = errors.New("structured output not returned")
 )
 
+const runStreamedJSONEventBuffer = 16
+
 // RunJSONOptions configure a typed JSON turn.
 type RunJSONOptions[T any] struct {
 	// TurnOptions forwards additional options for the turn. When nil a zero TurnOptions
@@ -135,7 +137,7 @@ func RunStreamedJSON[T any](ctx context.Context, thread *Thread, input string, o
 		return RunStreamedJSONResult[T]{}, err
 	}
 
-	events := make(chan ThreadEvent)
+	events := make(chan ThreadEvent, runStreamedJSONEventBuffer)
 	updates := make(chan RunStreamedJSONUpdate[T])
 	shErr := &sharedError{}
 
@@ -194,6 +196,8 @@ func RunStreamedJSON[T any](ctx context.Context, thread *Thread, input string, o
 			case events <- event:
 			case <-raw.stream.done:
 				return
+			default:
+				// Drop events when no consumer is attached to avoid blocking snapshot updates.
 			}
 		}
 
