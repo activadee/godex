@@ -38,6 +38,11 @@ func LocalImageSegment(path string) InputSegment {
 	return InputSegment{LocalImagePath: path}
 }
 
+const (
+	maxURLImageSizeBytes = 8 << 20 // 8 MiB safety limit for remote downloads
+	sniffBufferSize      = 512
+)
+
 // URLImageSegment downloads an image from the provided URL into a temporary file and
 // returns an input segment that references it. The file is cleaned up automatically
 // when the run finishes.
@@ -74,23 +79,30 @@ func URLImageSegment(ctx context.Context, rawURL string) (InputSegment, error) {
 		return InputSegment{}, fmt.Errorf("download image: content-type %q is not an image", mediaType)
 	}
 
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
+	ext := extensionForMediaType(mediaType)
+	limited := &io.LimitedReader{R: resp.Body, N: maxURLImageSizeBytes + 1}
+	sniff := make([]byte, sniffBufferSize)
+	n, err := io.ReadFull(limited, sniff)
+	switch {
+	case err == io.EOF && n == 0:
+		return InputSegment{}, fmt.Errorf("download image: empty response body")
+	case err != nil && err != io.ErrUnexpectedEOF:
 		return InputSegment{}, fmt.Errorf("read image body: %w", err)
 	}
-	if len(data) == 0 {
-		return InputSegment{}, fmt.Errorf("download image: empty response body")
-	}
 
-	ext := extensionForMediaType(mediaType)
-	if ext == "" {
-		detected := http.DetectContentType(data)
+	if ext == "" && n > 0 {
+		detected := http.DetectContentType(sniff[:n])
 		if strings.HasPrefix(detected, "image/") {
 			ext = extensionForMediaType(detected)
 		}
 	}
 
-	return newTempImageSegment(data, ext)
+	path, cleanup, err := writeTempImageStream(ext, sniff[:n], limited, maxURLImageSizeBytes)
+	if err != nil {
+		return InputSegment{}, err
+	}
+
+	return InputSegment{LocalImagePath: path, cleanup: cleanup}, nil
 }
 
 // BytesImageSegment writes the provided image bytes to a temporary file and returns
@@ -183,14 +195,47 @@ func normalizeInput(base string, segments []InputSegment) (normalizedInput, erro
 }
 
 func newTempImageSegment(data []byte, ext string) (InputSegment, error) {
-	path, cleanup, err := writeTempImageFile(ext, data)
+	path, cleanup, err := writeTempImageBytes(ext, data)
 	if err != nil {
 		return InputSegment{}, err
 	}
 	return InputSegment{LocalImagePath: path, cleanup: cleanup}, nil
 }
 
-func writeTempImageFile(ext string, data []byte) (string, func(), error) {
+func writeTempImageBytes(ext string, data []byte) (string, func(), error) {
+	return writeTempImageFile(ext, func(f *os.File) (int64, error) {
+		n, err := f.Write(data)
+		return int64(n), err
+	})
+}
+
+func writeTempImageStream(ext string, head []byte, body io.Reader, maxSize int64) (string, func(), error) {
+	validator := func(total int64) error {
+		if total == 0 {
+			return fmt.Errorf("download image: empty response body")
+		}
+		if total > maxSize {
+			return fmt.Errorf("download image: exceeded %d byte size limit", maxSize)
+		}
+		return nil
+	}
+
+	return writeTempImageFile(ext, func(f *os.File) (int64, error) {
+		var total int64
+		if len(head) > 0 {
+			n, err := f.Write(head)
+			total += int64(n)
+			if err != nil {
+				return total, err
+			}
+		}
+		written, err := io.Copy(f, body)
+		total += written
+		return total, err
+	}, validator)
+}
+
+func writeTempImageFile(ext string, writer func(*os.File) (int64, error), validators ...func(int64) error) (string, func(), error) {
 	ext = strings.TrimSpace(ext)
 	if ext != "" && !strings.HasPrefix(ext, ".") {
 		ext = "." + ext
@@ -211,10 +256,22 @@ func writeTempImageFile(ext string, data []byte) (string, func(), error) {
 		_ = os.Remove(path)
 	}
 
-	if _, err := file.Write(data); err != nil {
+	total, err := writer(file)
+	if err != nil {
 		_ = file.Close()
 		cleanup()
 		return "", nil, fmt.Errorf("write temp image: %w", err)
+	}
+
+	for _, validate := range validators {
+		if validate == nil {
+			continue
+		}
+		if err := validate(total); err != nil {
+			_ = file.Close()
+			cleanup()
+			return "", nil, err
+		}
 	}
 
 	if err := file.Close(); err != nil {

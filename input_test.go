@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -120,6 +121,24 @@ func TestURLImageSegmentRejectsNonImageContentType(t *testing.T) {
 	}
 }
 
+func TestURLImageSegmentRejectsOversizedImage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "image/png")
+		if _, err := io.CopyN(w, zeroReader{}, int64(maxURLImageSizeBytes)+1); err != nil && err != io.EOF {
+			t.Fatalf("failed to write large body: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	_, err := URLImageSegment(context.Background(), server.URL)
+	if err == nil {
+		t.Fatal("expected error for oversized image")
+	}
+	if !strings.Contains(err.Error(), "size limit") {
+		t.Fatalf("expected size limit error, got %v", err)
+	}
+}
+
 func TestBytesImageSegmentCreatesFileWithExtension(t *testing.T) {
 	imageData := decodeBase64(t, "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4//8/AAX+Av7l/wAAAABJRU5ErkJggg==")
 
@@ -157,4 +176,13 @@ func decodeBase64(t *testing.T, s string) []byte {
 		t.Fatalf("decode base64: %v", err)
 	}
 	return data
+}
+
+type zeroReader struct{}
+
+func (zeroReader) Read(p []byte) (int, error) {
+	for i := range p {
+		p[i] = 0
+	}
+	return len(p), nil
 }
