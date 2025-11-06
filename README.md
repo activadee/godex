@@ -75,6 +75,52 @@ if err := result.Wait(); err != nil {
 }
 ```
 
+### Streaming callbacks
+
+Set `TurnOptions.Callbacks` to receive typed updates without writing a `switch` over
+`ThreadEvent`. The SDK invokes `OnEvent` first, followed by any matching typed callbacks,
+and finally forwards the raw event through `Events()`. Callbacks run on the streaming goroutine,
+so long-running work should be offloaded to avoid stalling the stream. You must continue
+draining the `Events()` channel (an empty `for range` loop works) to honour the CLI's
+backpressure expectations.
+
+```go
+callbacks := &godex.StreamCallbacks{
+	OnMessage: func(evt godex.StreamMessageEvent) {
+		if evt.Stage == godex.StreamItemStageCompleted {
+			log.Printf("assistant: %s", evt.Message.Text)
+		}
+	},
+	OnCommand: func(evt godex.StreamCommandEvent) {
+		log.Printf("command %s: %s", evt.Command.Status, evt.Command.Command)
+	},
+	OnPatch: func(evt godex.StreamPatchEvent) {
+		log.Printf("patch %s: %s", evt.Patch.ID, evt.Patch.Status)
+	},
+	OnFileChange: func(evt godex.StreamFileChangeEvent) {
+		log.Printf("  file %s (%s)", evt.Change.Path, evt.Change.Kind)
+	},
+}
+
+result, err := thread.RunStreamed(ctx, "Summarize the latest changes.", &godex.TurnOptions{
+	Callbacks: callbacks,
+})
+if err != nil {
+	log.Fatal(err)
+}
+defer result.Close()
+
+for range result.Events() {
+	// Drain events; callbacks handled the typed work already.
+}
+
+if err := result.Wait(); err != nil {
+	log.Fatal(err)
+}
+```
+
+See `examples/streaming_callbacks` for a complete runnable sample.
+
 ## Structured output
 
 Pass a JSON schema in `TurnOptions.OutputSchema` and the SDK writes a temporary file for the CLI:
