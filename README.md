@@ -93,6 +93,24 @@ turn, err := thread.Run(ctx, "Write a one sentence update.", &godex.TurnOptions{
 })
 ```
 
+### Typed helpers
+
+Generate and decode structured JSON into Go types with `RunJSON` / `RunStreamedJSON`. Provide
+your own schema or allow the helpers to infer one from `T`:
+
+```go
+type Update struct {
+ Headline string `json:"headline"`
+ NextStep string `json:"next_step"`
+}
+
+result, err := godex.RunJSON[Update](ctx, thread, "Provide a concise update.", nil)
+if err != nil {
+ log.Fatal(err)
+}
+log.Printf("update: %+v", result)
+```
+
 ## Multi-part input and local images
 
 Mix text segments and local image paths by using `RunInputs` / `RunStreamedInputs` with
@@ -119,6 +137,7 @@ fmt.Println("Assistant:", turn.FinalResponse)
 - `examples/basic`: single-turn conversation (`go run ./examples/basic`)
 - `examples/streaming`: step-by-step event streaming demo (`go run ./examples/streaming`)
 - `examples/schema`: structured JSON output with schema validation (`go run ./examples/schema`)
+- `examples/structured_output`: typed structured output helpers (`go run ./examples/structured_output`)
 - `examples/images`: multi-part prompt mixing text and a local image (`go run ./examples/images`)
 
 ## Thread persistence
