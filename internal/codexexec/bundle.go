@@ -22,7 +22,7 @@ const (
 	archiveZip
 )
 
-const defaultCodexReleaseTag = "rust-v0.52.0"
+const defaultCodexReleaseTag = "rust-v0.55.0"
 
 var downloadBinaryFunc = downloadBinaryFromRelease
 var runtimeGOOS = runtime.GOOS
@@ -154,8 +154,8 @@ func bundleCacheDir() (string, error) {
 func downloadBinaryFromRelease(info targetInfo, release, destPath string) error {
 	url := fmt.Sprintf("https://github.com/openai/codex/releases/download/%s/%s", release, info.assetName)
 
-	client := &http.Client{Timeout: 2 * time.Minute}  
-	resp, err := client.Get(url) 
+	client := &http.Client{Timeout: 2 * time.Minute}
+	resp, err := client.Get(url)
 	if err != nil {
 		return fmt.Errorf("download codex binary: %w", err)
 	}
