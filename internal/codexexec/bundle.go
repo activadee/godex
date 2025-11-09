@@ -84,6 +84,24 @@ func normalizeChecksum(value string) (string, error) {
 	return cleaned, nil
 }
 
+func (cfg bundleConfig) releasePinned() bool {
+	if strings.TrimSpace(cfg.releaseTag) != "" {
+		return true
+	}
+	return strings.TrimSpace(os.Getenv("GODEX_CLI_RELEASE_TAG")) != ""
+}
+
+func (cfg bundleConfig) checksumRequired() bool {
+	if strings.TrimSpace(cfg.checksumHex) != "" {
+		return true
+	}
+	return strings.TrimSpace(os.Getenv("GODEX_CLI_CHECKSUM")) != ""
+}
+
+func (cfg bundleConfig) requireBundledBinary() bool {
+	return cfg.releasePinned() || cfg.checksumRequired()
+}
+
 var downloadBinaryFunc = downloadBinaryFromRelease
 var runtimeGOOS = runtime.GOOS
 var runtimeGOARCH = runtime.GOARCH

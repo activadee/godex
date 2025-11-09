@@ -255,6 +255,9 @@ func findCodexPath(cfg bundleConfig) (string, error) {
 	if bundleErr == nil {
 		return bundledPath, nil
 	}
+	if cfg.requireBundledBinary() {
+		return "", fmt.Errorf("ensure bundled codex binary: %w", bundleErr)
+	}
 
 	path, err := exec.LookPath("codex")
 	if err == nil {

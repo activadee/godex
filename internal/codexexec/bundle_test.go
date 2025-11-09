@@ -287,6 +287,78 @@ func TestFindCodexPathFallsBackToSystemBinary(t *testing.T) {
 	}
 }
 
+func TestFindCodexPathReturnsErrorWhenChecksumConfigured(t *testing.T) {
+	tmpCache := t.TempDir()
+	cfg := bundleConfig{cacheDir: tmpCache, checksumHex: strings.Repeat("00", 32)}
+
+	originalGOOS, originalGOARCH := runtimeGOOS, runtimeGOARCH
+	runtimeGOOS, runtimeGOARCH = runtime.GOOS, runtime.GOARCH
+	t.Cleanup(func() {
+		runtimeGOOS, runtimeGOARCH = originalGOOS, originalGOARCH
+	})
+
+	originalDownloader := downloadBinaryFunc
+	downloadBinaryFunc = func(info targetInfo, release, destPath string) error {
+		return os.WriteFile(destPath, []byte("binary"), 0o700)
+	}
+	t.Cleanup(func() { downloadBinaryFunc = originalDownloader })
+
+	tempBinDir := t.TempDir()
+	dummyCodex := filepath.Join(tempBinDir, "codex")
+	if runtime.GOOS == "windows" {
+		dummyCodex += ".exe"
+	}
+	if err := os.WriteFile(dummyCodex, []byte("dummy"), 0o700); err != nil {
+		t.Fatalf("write dummy binary: %v", err)
+	}
+	originalPath := os.Getenv("PATH")
+	t.Setenv("PATH", tempBinDir+string(os.PathListSeparator)+originalPath)
+
+	_, err := findCodexPath(cfg)
+	if err == nil {
+		t.Fatalf("expected checksum error")
+	}
+	if !errors.Is(err, ErrChecksumMismatch) {
+		t.Fatalf("expected ErrChecksumMismatch, got %v", err)
+	}
+}
+
+func TestFindCodexPathReturnsErrorWhenReleasePinned(t *testing.T) {
+	tmpCache := t.TempDir()
+	cfg := bundleConfig{cacheDir: tmpCache, releaseTag: "custom-release"}
+
+	originalGOOS, originalGOARCH := runtimeGOOS, runtimeGOARCH
+	runtimeGOOS, runtimeGOARCH = runtime.GOOS, runtime.GOARCH
+	t.Cleanup(func() {
+		runtimeGOOS, runtimeGOARCH = originalGOOS, originalGOARCH
+	})
+
+	originalDownloader := downloadBinaryFunc
+	downloadBinaryFunc = func(info targetInfo, release, destPath string) error {
+		return fmt.Errorf("simulated download failure")
+	}
+	t.Cleanup(func() { downloadBinaryFunc = originalDownloader })
+
+	tempBinDir := t.TempDir()
+	dummyCodex := filepath.Join(tempBinDir, "codex")
+	if runtime.GOOS == "windows" {
+		dummyCodex += ".exe"
+	}
+	if err := os.WriteFile(dummyCodex, []byte("dummy"), 0o700); err != nil {
+		t.Fatalf("write dummy binary: %v", err)
+	}
+	originalPath := os.Getenv("PATH")
+	t.Setenv("PATH", tempBinDir+string(os.PathListSeparator)+originalPath)
+
+	_, err := findCodexPath(cfg)
+	if err == nil {
+		t.Fatalf("expected error due to pinned release")
+	}
+	if !strings.Contains(err.Error(), "simulated download failure") {
+		t.Fatalf("expected download failure error, got %v", err)
+	}
+}
+
 func sha256Hex(data []byte) string {
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
