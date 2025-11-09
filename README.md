@@ -8,7 +8,7 @@
 go get github.com/activadee/godex
 ```
 
-`godex` automatically downloads the Codex CLI into your user cache the first time it is needed. The cached build is keyed by platform and release tag so upgrades are seamless. Advanced users can override the cache directory or release tag via the `GODEX_CLI_CACHE` and `GODEX_CLI_RELEASE_TAG` environment variables. If you prefer to use a self-managed binary, set `CodexOptions.CodexPathOverride` or ensure the CLI is already available on your `PATH` (e.g. `which codex`). Authentication is handled entirely by the CLI; reuse whichever credentials you already configured (environment variables, `codex auth login`, etc.) or set `CodexOptions.APIKey` to override the API key programmatically:
+`godex` automatically downloads the Codex CLI into your user cache the first time it is needed. The cached build is keyed by platform and release tag so upgrades are seamless. Advanced users can override the cache directory or release tag via `CodexOptions.CLICacheDir` / `CodexOptions.CLIReleaseTag` (or the `GODEX_CLI_CACHE` / `GODEX_CLI_RELEASE_TAG` environment variables) and enforce SHA-256 verification with `CodexOptions.CLIChecksum` or `GODEX_CLI_CHECKSUM`. If you prefer to use a self-managed binary, set `CodexOptions.CodexPathOverride` or ensure the CLI is already available on your `PATH` (e.g. `which codex`). Authentication is handled entirely by the CLI; reuse whichever credentials you already configured (environment variables, `codex auth login`, etc.) or set `CodexOptions.APIKey` to override the API key programmatically:
 
 ```bash
 export CODEX_API_KEY=sk-...
@@ -17,6 +17,40 @@ codex auth login
 ```
 
 Override service endpoints (for self-hosted deployments) with `CodexOptions.BaseURL`.
+
+### CLI bootstrap controls
+
+`CodexOptions` exposes the same knobs that previously required environment variables when
+you need deterministic CLI bootstrapping:
+
+- `CLICacheDir` overrides where downloaded binaries are stored. It takes precedence over
+  `GODEX_CLI_CACHE` and falls back to the user cache or `os.TempDir()`.
+- `CLIReleaseTag` pins the release asset fetched from `github.com/openai/codex`. It overrides
+  `GODEX_CLI_RELEASE_TAG` and defaults to the SDK's bundled tag.
+- `CLIChecksum` enforces integrity by verifying the SHA-256 checksum of the extracted binary.
+  Supply the expected digest (hex encoded) from the official release notes or your
+  distribution channel. The environment variable equivalent is `GODEX_CLI_CHECKSUM`.
+
+```go
+import (
+	"os"
+	"path/filepath"
+
+	"github.com/activadee/godex"
+)
+
+client, err := godex.New(godex.CodexOptions{
+	CLICacheDir:   filepath.Join(os.TempDir(), "codex-cache"),
+	CLIReleaseTag: "rust-v0.55.0",
+	CLIChecksum:   "f8a1...",
+})
+```
+
+When a checksum is configured, `godex` verifies both cached binaries and freshly downloaded
+ones, forcing a re-download or returning an error if the digest does not match. This allows
+you to gate Codex upgrades on an allowlisted fingerprint without writing custom bootstrap
+code. The checksum is calculated over the extracted `codex` executable for the detected
+platform/architecture.
 
 ## Quick start
 

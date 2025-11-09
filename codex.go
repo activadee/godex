@@ -11,7 +11,12 @@ type Codex struct {
 // New constructs a Codex SDK instance. The Codex binary is discovered automatically unless
 // CodexOptions.CodexPathOverride is provided.
 func New(options CodexOptions) (*Codex, error) {
-	exec, err := codexexec.New(options.CodexPathOverride)
+	exec, err := codexexec.New(codexexec.RunnerOptions{
+		PathOverride: options.CodexPathOverride,
+		CacheDir:     options.CLICacheDir,
+		ReleaseTag:   options.CLIReleaseTag,
+		ChecksumHex:  options.CLIChecksum,
+	})
 	if err != nil {
 		return nil, err
 	}

@@ -1,6 +1,9 @@
 package codexexec
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,7 +44,7 @@ func TestDetectTargetSupportsKnownCombinations(t *testing.T) {
 
 func TestEnsureBundledBinaryDownloadsWhenMissing(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("GODEX_CLI_CACHE", tmp)
+	cfg := bundleConfig{cacheDir: tmp}
 
 	originalGOOS, originalGOARCH := runtimeGOOS, runtimeGOARCH
 	runtimeGOOS, runtimeGOARCH = "linux", "amd64"
@@ -60,7 +63,7 @@ func TestEnsureBundledBinaryDownloadsWhenMissing(t *testing.T) {
 	}
 	t.Cleanup(func() { downloadBinaryFunc = originalDownloader })
 
-	path, err := ensureBundledBinary()
+	path, err := ensureBundledBinary(cfg)
 	if err != nil {
 		t.Fatalf("ensureBundledBinary returned error: %v", err)
 	}
@@ -74,7 +77,7 @@ func TestEnsureBundledBinaryDownloadsWhenMissing(t *testing.T) {
 
 func TestEnsureBundledBinarySkipsDownloadWhenPresent(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("GODEX_CLI_CACHE", tmp)
+	cfg := bundleConfig{cacheDir: tmp}
 
 	originalGOOS, originalGOARCH := runtimeGOOS, runtimeGOARCH
 	runtimeGOOS, runtimeGOARCH = "linux", "amd64"
@@ -83,7 +86,7 @@ func TestEnsureBundledBinarySkipsDownloadWhenPresent(t *testing.T) {
 	})
 
 	info, _ := detectTarget(runtimeGOOS, runtimeGOARCH)
-	release := releaseTag()
+	release := cfg.releaseTagName()
 	targetDir := filepath.Join(tmp, release, info.triple)
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -100,12 +103,150 @@ func TestEnsureBundledBinarySkipsDownloadWhenPresent(t *testing.T) {
 	}
 	t.Cleanup(func() { downloadBinaryFunc = originalDownloader })
 
-	path, err := ensureBundledBinary()
+	path, err := ensureBundledBinary(cfg)
 	if err != nil {
 		t.Fatalf("ensureBundledBinary returned error: %v", err)
 	}
 	if path != destPath {
 		t.Fatalf("expected %s, got %s", destPath, path)
+	}
+}
+
+func TestBundleCacheDirPrefersOptionOverEnv(t *testing.T) {
+	envDir := filepath.Join(t.TempDir(), "env-cache")
+	t.Setenv("GODEX_CLI_CACHE", envDir)
+	explicit := filepath.Join(t.TempDir(), "explicit-cache")
+	cfg := bundleConfig{cacheDir: explicit}
+
+	got, err := cfg.cacheDirPath()
+	if err != nil {
+		t.Fatalf("cacheDirPath returned error: %v", err)
+	}
+	if got != explicit {
+		t.Fatalf("cacheDirPath=%s, want %s", got, explicit)
+	}
+}
+
+func TestEnsureBundledBinaryUsesProvidedReleaseTag(t *testing.T) {
+	tmp := t.TempDir()
+	cfg := bundleConfig{cacheDir: tmp, releaseTag: "custom-release"}
+	t.Setenv("GODEX_CLI_RELEASE_TAG", "env-release")
+
+	originalGOOS, originalGOARCH := runtimeGOOS, runtimeGOARCH
+	runtimeGOOS, runtimeGOARCH = "linux", "amd64"
+	t.Cleanup(func() {
+		runtimeGOOS, runtimeGOARCH = originalGOOS, originalGOARCH
+	})
+
+	var releaseUsed string
+	originalDownloader := downloadBinaryFunc
+	downloadBinaryFunc = func(info targetInfo, release, destPath string) error {
+		releaseUsed = release
+		return os.WriteFile(destPath, []byte("binary"), 0o700)
+	}
+	t.Cleanup(func() { downloadBinaryFunc = originalDownloader })
+
+	if _, err := ensureBundledBinary(cfg); err != nil {
+		t.Fatalf("ensureBundledBinary returned error: %v", err)
+	}
+	if releaseUsed != "custom-release" {
+		t.Fatalf("expected release custom-release, got %s", releaseUsed)
+	}
+}
+
+func TestEnsureBundledBinaryVerifiesChecksums(t *testing.T) {
+	tmp := t.TempDir()
+	cfg := bundleConfig{
+		cacheDir:    tmp,
+		checksumHex: sha256Hex([]byte("binary")),
+	}
+
+	originalGOOS, originalGOARCH := runtimeGOOS, runtimeGOARCH
+	runtimeGOOS, runtimeGOARCH = "linux", "amd64"
+	t.Cleanup(func() {
+		runtimeGOOS, runtimeGOARCH = originalGOOS, originalGOARCH
+	})
+
+	originalDownloader := downloadBinaryFunc
+	downloadBinaryFunc = func(info targetInfo, release, destPath string) error {
+		return os.WriteFile(destPath, []byte("binary"), 0o700)
+	}
+	t.Cleanup(func() { downloadBinaryFunc = originalDownloader })
+
+	if _, err := ensureBundledBinary(cfg); err != nil {
+		t.Fatalf("ensureBundledBinary returned error: %v", err)
+	}
+}
+
+func TestEnsureBundledBinaryFailsOnChecksumMismatch(t *testing.T) {
+	tmp := t.TempDir()
+	cfg := bundleConfig{
+		cacheDir:    tmp,
+		checksumHex: strings.Repeat("00", 32),
+	}
+
+	originalGOOS, originalGOARCH := runtimeGOOS, runtimeGOARCH
+	runtimeGOOS, runtimeGOARCH = "linux", "amd64"
+	t.Cleanup(func() {
+		runtimeGOOS, runtimeGOARCH = originalGOOS, originalGOARCH
+	})
+
+	originalDownloader := downloadBinaryFunc
+	downloadBinaryFunc = func(info targetInfo, release, destPath string) error {
+		return os.WriteFile(destPath, []byte("binary"), 0o700)
+	}
+	t.Cleanup(func() { downloadBinaryFunc = originalDownloader })
+
+	if _, err := ensureBundledBinary(cfg); err == nil || !errors.Is(err, ErrChecksumMismatch) {
+		t.Fatalf("expected checksum mismatch error, got %v", err)
+	}
+}
+
+func TestEnsureBundledBinaryRedownloadsWhenCachedChecksumMismatch(t *testing.T) {
+	tmp := t.TempDir()
+	cfg := bundleConfig{
+		cacheDir:    tmp,
+		checksumHex: sha256Hex([]byte("new")),
+	}
+
+	originalGOOS, originalGOARCH := runtimeGOOS, runtimeGOARCH
+	runtimeGOOS, runtimeGOARCH = "linux", "amd64"
+	t.Cleanup(func() {
+		runtimeGOOS, runtimeGOARCH = originalGOOS, originalGOARCH
+	})
+
+	info, _ := detectTarget(runtimeGOOS, runtimeGOARCH)
+	release := cfg.releaseTagName()
+	targetDir := filepath.Join(tmp, release, info.triple)
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	destPath := filepath.Join(targetDir, info.exeName)
+	if err := os.WriteFile(destPath, []byte("old"), 0o700); err != nil {
+		t.Fatalf("write cache: %v", err)
+	}
+
+	var downloads int
+	originalDownloader := downloadBinaryFunc
+	downloadBinaryFunc = func(info targetInfo, release, destPath string) error {
+		downloads++
+		return os.WriteFile(destPath, []byte("new"), 0o700)
+	}
+	t.Cleanup(func() { downloadBinaryFunc = originalDownloader })
+
+	path, err := ensureBundledBinary(cfg)
+	if err != nil {
+		t.Fatalf("ensureBundledBinary returned error: %v", err)
+	}
+	if downloads != 1 {
+		t.Fatalf("expected 1 re-download, got %d", downloads)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read binary: %v", err)
+	}
+	if string(data) != "new" {
+		t.Fatalf("expected binary to be rewritten with new contents")
 	}
 }
 
@@ -137,11 +278,88 @@ func TestFindCodexPathFallsBackToSystemBinary(t *testing.T) {
 	originalPath := os.Getenv("PATH")
 	t.Setenv("PATH", tempBinDir+string(os.PathListSeparator)+originalPath)
 
-	path, err := findCodexPath()
+	path, err := findCodexPath(bundleConfig{})
 	if err != nil {
 		t.Fatalf("findCodexPath returned error: %v", err)
 	}
 	if !strings.HasPrefix(path, tempBinDir) {
 		t.Fatalf("expected fallback path within %s, got %s", tempBinDir, path)
 	}
+}
+
+func TestFindCodexPathReturnsErrorWhenChecksumConfigured(t *testing.T) {
+	tmpCache := t.TempDir()
+	cfg := bundleConfig{cacheDir: tmpCache, checksumHex: strings.Repeat("00", 32)}
+
+	originalGOOS, originalGOARCH := runtimeGOOS, runtimeGOARCH
+	runtimeGOOS, runtimeGOARCH = runtime.GOOS, runtime.GOARCH
+	t.Cleanup(func() {
+		runtimeGOOS, runtimeGOARCH = originalGOOS, originalGOARCH
+	})
+
+	originalDownloader := downloadBinaryFunc
+	downloadBinaryFunc = func(info targetInfo, release, destPath string) error {
+		return os.WriteFile(destPath, []byte("binary"), 0o700)
+	}
+	t.Cleanup(func() { downloadBinaryFunc = originalDownloader })
+
+	tempBinDir := t.TempDir()
+	dummyCodex := filepath.Join(tempBinDir, "codex")
+	if runtime.GOOS == "windows" {
+		dummyCodex += ".exe"
+	}
+	if err := os.WriteFile(dummyCodex, []byte("dummy"), 0o700); err != nil {
+		t.Fatalf("write dummy binary: %v", err)
+	}
+	originalPath := os.Getenv("PATH")
+	t.Setenv("PATH", tempBinDir+string(os.PathListSeparator)+originalPath)
+
+	_, err := findCodexPath(cfg)
+	if err == nil {
+		t.Fatalf("expected checksum error")
+	}
+	if !errors.Is(err, ErrChecksumMismatch) {
+		t.Fatalf("expected ErrChecksumMismatch, got %v", err)
+	}
+}
+
+func TestFindCodexPathReturnsErrorWhenReleasePinned(t *testing.T) {
+	tmpCache := t.TempDir()
+	cfg := bundleConfig{cacheDir: tmpCache, releaseTag: "custom-release"}
+
+	originalGOOS, originalGOARCH := runtimeGOOS, runtimeGOARCH
+	runtimeGOOS, runtimeGOARCH = runtime.GOOS, runtime.GOARCH
+	t.Cleanup(func() {
+		runtimeGOOS, runtimeGOARCH = originalGOOS, originalGOARCH
+	})
+
+	originalDownloader := downloadBinaryFunc
+	downloadBinaryFunc = func(info targetInfo, release, destPath string) error {
+		return fmt.Errorf("simulated download failure")
+	}
+	t.Cleanup(func() { downloadBinaryFunc = originalDownloader })
+
+	tempBinDir := t.TempDir()
+	dummyCodex := filepath.Join(tempBinDir, "codex")
+	if runtime.GOOS == "windows" {
+		dummyCodex += ".exe"
+	}
+	if err := os.WriteFile(dummyCodex, []byte("dummy"), 0o700); err != nil {
+		t.Fatalf("write dummy binary: %v", err)
+	}
+	originalPath := os.Getenv("PATH")
+	t.Setenv("PATH", tempBinDir+string(os.PathListSeparator)+originalPath)
+
+	_, err := findCodexPath(cfg)
+	if err == nil {
+		t.Fatalf("expected error due to pinned release")
+	}
+	if !strings.Contains(err.Error(), "simulated download failure") {
+		t.Fatalf("expected download failure error, got %v", err)
+	}
+}
+
+func sha256Hex(data []byte) string {
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
 }

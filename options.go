@@ -34,6 +34,16 @@ type CodexOptions struct {
 	// ConfigOverrides forwards CLI configuration overrides as `-c key=value` pairs. When
 	// the `profile` key is present it is emitted as `--profile <value>` instead.
 	ConfigOverrides map[string]any
+	// CLICacheDir overrides the directory used to cache downloaded Codex binaries. When empty,
+	// the SDK falls back to $GODEX_CLI_CACHE, then the user cache directory.
+	CLICacheDir string
+	// CLIReleaseTag pins the Codex CLI release tag to download. When unset, the SDK checks
+	// $GODEX_CLI_RELEASE_TAG before falling back to its default bundled tag.
+	CLIReleaseTag string
+	// CLIChecksum optionally enforces integrity verification of the downloaded Codex binary.
+	// Provide the expected SHA-256 checksum (hex encoded). When empty, checksum verification
+	// is skipped. Use $GODEX_CLI_CHECKSUM to configure the same behavior via environment.
+	CLIChecksum string
 }
 
 // ThreadOptions configure how the CLI executes a particular thread.
