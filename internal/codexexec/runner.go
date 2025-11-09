@@ -18,6 +18,18 @@ const (
 	goSDKOriginator       = "codex_sdk_go"
 )
 
+// RunnerOptions controls how the Codex CLI binary is discovered / bootstrapped before execution.
+type RunnerOptions struct {
+	// PathOverride points directly at a Codex binary instead of discovering/downloading it.
+	PathOverride string
+	// CacheDir overrides the directory used to cache downloaded Codex binaries.
+	CacheDir string
+	// ReleaseTag pins the Codex CLI release to download.
+	ReleaseTag string
+	// ChecksumHex enforces an expected SHA-256 checksum (hex encoded) for the downloaded binary.
+	ChecksumHex string
+}
+
 // Args mirrors the CLI flags accepted by `codex exec`.
 type Args struct {
 	Input            string
@@ -39,11 +51,16 @@ type Runner struct {
 }
 
 // New constructs a Runner, optionally overriding the codex binary path.
-func New(override string) (*Runner, error) {
-	path := override
+func New(options RunnerOptions) (*Runner, error) {
+	path := options.PathOverride
+	bootstrap := bundleConfig{
+		cacheDir:    options.CacheDir,
+		releaseTag:  options.ReleaseTag,
+		checksumHex: options.ChecksumHex,
+	}
 	if path == "" {
 		var err error
-		path, err = findCodexPath()
+		path, err = findCodexPath(bootstrap)
 		if err != nil {
 			return nil, err
 		}
@@ -233,8 +250,8 @@ func indexByte(s string, b byte) int {
 	return -1
 }
 
-func findCodexPath() (string, error) {
-	bundledPath, bundleErr := ensureBundledBinary()
+func findCodexPath(cfg bundleConfig) (string, error) {
+	bundledPath, bundleErr := ensureBundledBinary(cfg)
 	if bundleErr == nil {
 		return bundledPath, nil
 	}

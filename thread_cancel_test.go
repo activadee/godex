@@ -23,7 +23,7 @@ func TestThreadRunStreamedCancellationTerminatesProcess(t *testing.T) {
 
 	fakeBinary := buildFakeCodexBinary(t)
 
-	runner, err := codexexec.New(fakeBinary)
+	runner, err := codexexec.New(codexexec.RunnerOptions{PathOverride: fakeBinary})
 	if err != nil {
 		t.Fatalf("codexexec.New returned error: %v", err)
 	}

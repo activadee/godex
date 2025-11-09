@@ -5,6 +5,8 @@ import (
 	"archive/zip"
 	"bytes"
 	"compress/gzip"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -12,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -24,6 +27,63 @@ const (
 
 const defaultCodexReleaseTag = "rust-v0.55.0"
 
+var ErrChecksumMismatch = errors.New("codex bundle checksum mismatch")
+
+type bundleConfig struct {
+	cacheDir    string
+	releaseTag  string
+	checksumHex string
+}
+
+func (cfg bundleConfig) cacheDirPath() (string, error) {
+	if dir := strings.TrimSpace(cfg.cacheDir); dir != "" {
+		return dir, nil
+	}
+	if override := strings.TrimSpace(os.Getenv("GODEX_CLI_CACHE")); override != "" {
+		return override, nil
+	}
+	if dir, err := os.UserCacheDir(); err == nil && dir != "" {
+		return filepath.Join(dir, "godex", "codex"), nil
+	}
+	return filepath.Join(os.TempDir(), "godex", "codex"), nil
+}
+
+func (cfg bundleConfig) releaseTagName() string {
+	if tag := strings.TrimSpace(cfg.releaseTag); tag != "" {
+		return tag
+	}
+	if env := strings.TrimSpace(os.Getenv("GODEX_CLI_RELEASE_TAG")); env != "" {
+		return env
+	}
+	return defaultCodexReleaseTag
+}
+
+func (cfg bundleConfig) checksumValue() (string, error) {
+	value := strings.TrimSpace(cfg.checksumHex)
+	if value == "" {
+		value = strings.TrimSpace(os.Getenv("GODEX_CLI_CHECKSUM"))
+	}
+	if value == "" {
+		return "", nil
+	}
+	normalized, err := normalizeChecksum(value)
+	if err != nil {
+		return "", err
+	}
+	return normalized, nil
+}
+
+func normalizeChecksum(value string) (string, error) {
+	cleaned := strings.ToLower(strings.TrimSpace(value))
+	if cleaned == "" {
+		return "", nil
+	}
+	if _, err := hex.DecodeString(cleaned); err != nil {
+		return "", fmt.Errorf("invalid checksum value %q: %w", value, err)
+	}
+	return cleaned, nil
+}
+
 var downloadBinaryFunc = downloadBinaryFromRelease
 var runtimeGOOS = runtime.GOOS
 var runtimeGOARCH = runtime.GOARCH
@@ -34,13 +94,6 @@ type targetInfo struct {
 	archive    archiveKind
 	binaryName string
 	exeName    string
-}
-
-func releaseTag() string {
-	if v := os.Getenv("GODEX_CLI_RELEASE_TAG"); v != "" {
-		return v
-	}
-	return defaultCodexReleaseTag
 }
 
 func detectTarget(goos, goarch string) (targetInfo, bool) {
@@ -106,18 +159,22 @@ func detectTarget(goos, goarch string) (targetInfo, bool) {
 	return targetInfo{}, false
 }
 
-func ensureBundledBinary() (string, error) {
+func ensureBundledBinary(cfg bundleConfig) (string, error) {
 	info, ok := detectTarget(runtimeGOOS, runtimeGOARCH)
 	if !ok {
 		return "", fmt.Errorf("unsupported platform: %s/%s", runtimeGOOS, runtimeGOARCH)
 	}
 
-	cacheDir, err := bundleCacheDir()
+	cacheDir, err := cfg.cacheDirPath()
 	if err != nil {
 		return "", err
 	}
 
-	release := releaseTag()
+	release := cfg.releaseTagName()
+	checksumHex, err := cfg.checksumValue()
+	if err != nil {
+		return "", fmt.Errorf("resolve checksum: %w", err)
+	}
 	targetDir := filepath.Join(cacheDir, release, info.triple)
 	if err := os.MkdirAll(targetDir, 0o755); err != nil {
 		return "", fmt.Errorf("create bundle directory: %w", err)
@@ -125,7 +182,16 @@ func ensureBundledBinary() (string, error) {
 
 	destPath := filepath.Join(targetDir, info.exeName)
 	if statErr := ensureBinaryState(destPath); statErr == nil {
-		return destPath, nil
+		if checksumHex == "" {
+			return destPath, nil
+		}
+		if err := verifyChecksum(destPath, checksumHex); err == nil {
+			return destPath, nil
+		} else if errors.Is(err, ErrChecksumMismatch) {
+			_ = os.Remove(destPath)
+		} else {
+			return "", fmt.Errorf("verify cached binary: %w", err)
+		}
 	} else if !errors.Is(statErr, os.ErrNotExist) {
 		return "", fmt.Errorf("stat bundled binary: %w", statErr)
 	}
@@ -133,22 +199,18 @@ func ensureBundledBinary() (string, error) {
 	if err := downloadBinaryFunc(info, release, destPath); err != nil {
 		return "", err
 	}
+	if checksumHex != "" {
+		if err := verifyChecksum(destPath, checksumHex); err != nil {
+			_ = os.Remove(destPath)
+			return "", fmt.Errorf("verify downloaded binary: %w", err)
+		}
+	}
 	return destPath, nil
 }
 
 func ensureBinaryState(path string) error {
 	_, err := os.Stat(path)
 	return err
-}
-
-func bundleCacheDir() (string, error) {
-	if override := os.Getenv("GODEX_CLI_CACHE"); override != "" {
-		return override, nil
-	}
-	if dir, err := os.UserCacheDir(); err == nil && dir != "" {
-		return filepath.Join(dir, "godex", "codex"), nil
-	}
-	return filepath.Join(os.TempDir(), "godex", "codex"), nil
 }
 
 func downloadBinaryFromRelease(info targetInfo, release, destPath string) error {
@@ -224,6 +286,24 @@ func extractZipBinary(data []byte, info targetInfo, destPath string) error {
 		return err
 	}
 	return fmt.Errorf("binary %s not found in archive", info.binaryName)
+}
+
+func verifyChecksum(path, expectedHex string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("open binary for checksum: %w", err)
+	}
+	defer file.Close()
+
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return fmt.Errorf("hash binary: %w", err)
+	}
+	actual := hex.EncodeToString(hasher.Sum(nil))
+	if actual != expectedHex {
+		return fmt.Errorf("%w: expected %s, got %s", ErrChecksumMismatch, expectedHex, actual)
+	}
+	return nil
 }
 
 func writeBinary(r io.Reader, destPath string) error {
