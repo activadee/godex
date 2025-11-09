@@ -1,0 +1,14 @@
+name: Doc Sync On Command
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  doc-sync:
+    if: >-
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '/docs') &&
+      github.actor == github.repository_owner
+    uses: activadee/codex-shared-workflows/.github/workflows/codex-doc-sync.yml@main
+    secrets: inherit
