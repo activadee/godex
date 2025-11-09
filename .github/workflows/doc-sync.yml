@@ -3,14 +3,14 @@ permissions:
   contents: write
   pull-requests: write
 on:
-  issue_comment:
-    types: [created]
+  workflow_dispatch:    # adds the “Run workflow” button
+  pull_request:
+    types: [opened, synchronize, reopened]   # only creates the check
 
 jobs:
   doc-sync:
-    if: >-
-      github.event.issue.pull_request &&
-      startsWith(github.event.comment.body, '/docs') &&
-      github.actor == github.repository_owner
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request' && github.actor == github.repository_owner)
     uses: activadee/codex-shared-workflows/.github/workflows/codex-doc-sync.yml@main
     secrets: inherit
