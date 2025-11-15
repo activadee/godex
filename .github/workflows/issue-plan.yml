@@ -1,0 +1,21 @@
+name: Codex Issue Implementation Plan
+
+on:
+  issues:
+    types:
+      - labeled
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  issue-plan:
+    if: >
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'codex-plan' &&
+      github.actor == github.repository_owner
+    uses: activadee/codex-shared-workflows/.github/workflows/issue-plan.yml@main
+    secrets: inherit
+    with:
+      issue_number: ${{ github.event.issue.number }}

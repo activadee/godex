@@ -16,6 +16,10 @@ Thanks for your interest in improving the Codex Go SDK! We welcome issues and pu
 - Keep commits focused; rebase onto the latest `main` when possible
 - Our CI runs `go test ./...` on pushes and pull requests—make sure it passes
 
+## Issue planning automation
+
+Repository maintainers can label an issue with `codex-plan` to trigger the Codex Issue Implementation Plan workflow. The workflow files the implementation outline back on the issue so everyone can see the proposed steps before coding starts.
+
 ## Code of conduct
 
 Be respectful and constructive. We follow the [Contributor Covenant](https://www.contributor-covenant.org/version/2/1/code_of_conduct/).
