@@ -8,4 +8,4 @@ on:
 
 jobs:
   test:
-    uses: activadee/codex-shared-workflows/.github/workflows/go-tests.yml@main
+    uses: activadee/codex-shared-workflows/workflows/go-tests.yml@main

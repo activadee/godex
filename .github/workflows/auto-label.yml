@@ -8,7 +8,7 @@ on:
 
 jobs:
   auto-label:
-    uses: activadee/codex-shared-workflows/.github/workflows/auto-label.yml@main
+    uses: activadee/codex-shared-workflows/workflows/auto-label.yml@main
     secrets: inherit
     with:
       max_labels: 3
