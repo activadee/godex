@@ -16,5 +16,5 @@ permissions:
 jobs:
   review:
     if: github.event.pull_request.draft == false
-    uses: activadee/codex-shared-workflows/workflows/codex-review.yml@main
+    uses: activadee/codex-shared-workflows/.github/workflows/codex-review.yml@main
     secrets: inherit
