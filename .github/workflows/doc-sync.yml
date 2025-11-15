@@ -12,5 +12,5 @@ jobs:
     if: >
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request' && github.actor == github.repository_owner)
-    uses: activadee/codex-shared-workflows/workflows/codex-doc-sync.yml@main
+    uses: activadee/codex-shared-workflows/.github/workflows/codex-doc-sync.yml@main
     secrets: inherit
